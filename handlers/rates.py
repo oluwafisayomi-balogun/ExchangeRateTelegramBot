@@ -32,6 +32,12 @@ from services.exchange import (
 
 router = Router()
 
+# Tracks user IDs that currently have a fetch in progress.
+# If the same user taps a button while one request is already running,
+# we ignore the second tap instead of firing two API calls at once.
+# This is an in-memory set — it resets when the bot restarts, which is fine.
+_pending: set[int] = set()
+
 
 def build_keyboard(current_base: str) -> InlineKeyboardMarkup:
     """
@@ -60,72 +66,77 @@ def build_keyboard(current_base: str) -> InlineKeyboardMarkup:
 
 async def send_rates(base: str, target: Message | CallbackQuery) -> None:
     """
-    Core logic: fetch rates for `base` and send/update the message.
+    Core logic: fetch rates for `base` and send the result.
 
-    `target` can be either a Message (from the /rates command) or a
-    CallbackQuery (from a button tap). We use isinstance() to handle
-    the small differences between the two:
-      - A Message needs a new reply sent, then edited with the result.
-      - A CallbackQuery needs its existing message edited in place.
+    Message flow:
+      - /rates command  → send a loading placeholder, then edit it with the result.
+      - Button tap      → acknowledge the callback, strip the keyboard off the old
+                          message, then send a fresh message with the new rates.
+                          This keeps the chat readable without flooding it with edits.
 
-    Why edit instead of send a new message?
-    Editing keeps the chat clean — tapping USD → EUR → GBP doesn't flood
-    the chat with three separate messages.
+    Throttle:
+      Each user gets one in-flight request at a time. If they tap again before the
+      first fetch completes, the second tap is silently dropped (callbacks) or ignored
+      (messages). The `_pending` set is cleared in a `finally` block so it always
+      releases even if the fetch raises an exception.
     """
-    base = base.upper()
+    user_id = target.from_user.id
 
-    if base not in SUPPORTED_CURRENCIES:
-        text = (
-            f"❌ *{base}* isn't a supported base currency.\n\n"
-            f"Supported: `{'`, `'.join(SUPPORTED_CURRENCIES)}`"
-        )
-        if isinstance(target, Message):
-            await target.answer(text, parse_mode="Markdown")
-        else:
-            # For a CallbackQuery, show_alert=True pops up a small alert
-            # dialog instead of silently doing nothing.
-            await target.answer(f"{base} is not supported.", show_alert=True)
+    if user_id in _pending:
+        if isinstance(target, CallbackQuery):
+            # Show a brief toast — doesn't interrupt the chat.
+            await target.answer("Already fetching, please wait…")
         return
 
-    if isinstance(target, Message):
-        # Send a placeholder first so the user knows something is happening.
-        # We keep a reference to it so we can edit it once the data arrives.
-        loading = await target.answer("⏳ Fetching rates…")
-    else:
-        # Calling target.answer() with no arguments acknowledges the callback
-        # to Telegram. Without this, Telegram shows a loading spinner on the
-        # button indefinitely.
-        await target.answer()
+    _pending.add(user_id)
+    try:
+        base = base.upper()
 
-    data = await fetch_rates(base)
+        if base not in SUPPORTED_CURRENCIES:
+            text = (
+                f"❌ {base} isn't a supported base currency.\n\n"
+                f"Supported: {', '.join(SUPPORTED_CURRENCIES)}"
+            )
+            if isinstance(target, Message):
+                await target.answer(text)
+            else:
+                await target.answer(f"{base} is not supported.", show_alert=True)
+            return
 
-    if data is None:
-        error_text = "⚠️ Couldn't reach the exchange rate API. Try again in a moment."
         if isinstance(target, Message):
-            await loading.edit_text(error_text)
+            # Send a placeholder so the user knows the bot is working.
+            loading = await target.answer("⏳ Fetching rates…")
         else:
-            await target.message.edit_text(error_text)
-        return
+            # Acknowledge the callback immediately — Telegram removes the loading
+            # spinner on the button as soon as we call this.
+            await target.answer()
+            # Strip the keyboard off the old message so it's clear the old rates
+            # are stale and the new ones are coming in a fresh message below.
+            await target.message.edit_reply_markup(reply_markup=None)
 
-    text = format_rates_message(data)
-    keyboard = build_keyboard(base)
+        data = await fetch_rates(base)
 
-    if isinstance(target, Message):
-        # Edit the "⏳ Fetching rates…" placeholder with the real content.
-        await loading.edit_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-            disable_web_page_preview=True,  # stops Telegram auto-expanding the Frankfurter link
-        )
-    else:
-        # Edit the message that contains the keyboard the user just tapped.
-        await target.message.edit_text(
-            text,
-            parse_mode="Markdown",
-            reply_markup=keyboard,
-            disable_web_page_preview=True,
-        )
+        if data is None:
+            error_text = "⚠️ Couldn't reach the exchange rate API. Try again in a moment."
+            if isinstance(target, Message):
+                await loading.edit_text(error_text)
+            else:
+                await target.message.answer(error_text)
+            return
+
+        text = format_rates_message(data)
+        keyboard = build_keyboard(base)
+
+        if isinstance(target, Message):
+            # Replace the "⏳ Fetching rates…" placeholder with the real content.
+            await loading.edit_text(text, reply_markup=keyboard)
+        else:
+            # Send a brand-new message so the conversation scrolls to the latest rates.
+            await target.message.answer(text, reply_markup=keyboard)
+
+    finally:
+        # Always release the lock, even if an unexpected exception occurred above.
+        _pending.discard(user_id)
 
 
 @router.message(Command("rates"))
@@ -134,7 +145,7 @@ async def cmd_rates(message: Message) -> None:
     Handles: /rates  or  /rates EUR
 
     message.text is the full string the user sent, e.g. "/rates EUR".
-    Splitting on whitespace with maxsplit=1 gives ["rates", "EUR"].
+    Splitting on whitespace with maxsplit=1 gives ["/rates", "EUR"].
     If there's no second part, we default to USD.
     """
     parts = message.text.split(maxsplit=1)
@@ -144,14 +155,14 @@ async def cmd_rates(message: Message) -> None:
 
 # F.data is an aiogram "magic filter" — it lets you filter CallbackQuery objects
 # by their callback_data field. F.data.startswith("rates:") matches any callback
-# that was triggered by our keyboard buttons (e.g. "rates:EUR", "rates:GBP").
+# triggered by our keyboard buttons (e.g. "rates:EUR", "rates:GBP").
 @router.callback_query(F.data.startswith("rates:"))
 async def cb_rates(callback: CallbackQuery) -> None:
     """
     Handles inline keyboard button taps.
 
     callback.data is the string we set in callback_data when building the keyboard.
-    Splitting on ":" gives us ["rates", "EUR"], so index [1] is the currency.
+    Splitting on ":" gives ["rates", "EUR"], so index [1] is the currency.
     """
     base = callback.data.split(":")[1]
     await send_rates(base, callback)

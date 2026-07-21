@@ -11,6 +11,7 @@ if you ever swap APIs, you only change this file.
 from __future__ import annotations
 
 import aiohttp
+from datetime import datetime
 
 # open.er-api.com is a free exchange rate API that includes NGN.
 # No API key required. Rates update roughly every hour.
@@ -77,9 +78,13 @@ async def fetch_rates(base: str = "USD") -> dict | None:
                 # We pop it out so it doesn't appear in the output.
                 rates = data["rates"]
                 rates.pop(base, None)
+                # Parse the full UTC string e.g. "Tue, 21 Jul 2026 00:00:01 +0000"
+                # into a clean "21 Jul 2026" label for the message.
+                raw_date = data["time_last_update_utc"]
+                date = datetime.strptime(raw_date, "%a, %d %b %Y %H:%M:%S %z").strftime("%d %B %Y")
                 return {
                     "base": data["base_code"],
-                    "date": data["time_last_update_utc"][:10],  # "Mon, 15 Jan 2024 ..." → "Mon, 15"
+                    "date": date,
                     "rates": rates,
                 }
     except Exception:
@@ -107,13 +112,12 @@ def format_rates_message(data: dict) -> str:
     flag = CURRENCY_FLAGS.get(base, "💱")
 
     lines = [
-        f"{flag} *Exchange Rates — {base}*",
-        f"📅 Updated: `{date}`\n",
+        f"{flag} {base} Exchange Rates. {date}",
+        "",  # blank line before the rate rows
     ]
 
-    # Build the display list: 5 quick currencies (excluding the base) + NGN.
-    # This keeps the message to exactly 6 lines regardless of which base is active.
-    display = [c for c in QUICK_CURRENCIES if c != base]  # 5 currencies
+    # 5 quick currencies (excluding whichever is the current base) + NGN.
+    display = [c for c in QUICK_CURRENCIES if c != base]
     if "NGN" not in display and base != "NGN":
         display.append("NGN")
 
@@ -122,10 +126,9 @@ def format_rates_message(data: dict) -> str:
         if rate is None:
             continue
         currency_flag = CURRENCY_FLAGS.get(code, "  ")
-        # Currencies like JPY and NGN have large numbers — 2 decimal places is enough.
-        # Currencies close to 1 (EUR, GBP) need 4 decimal places for meaningful precision.
+        # Large rates (JPY, NGN) look fine at 2 decimal places.
+        # Rates close to 1 (EUR, GBP, CAD) need 4 to show meaningful differences.
         formatted = f"{rate:,.4f}" if rate < 100 else f"{rate:,.2f}"
-        lines.append(f"{currency_flag} `{code}` — `{formatted}`")
+        lines.append(f"{currency_flag} {code} - {formatted}")
 
-    lines.append(f"\n_Powered by_ [open.er-api.com](https://www.exchangerate-api.com)")
     return "\n".join(lines)

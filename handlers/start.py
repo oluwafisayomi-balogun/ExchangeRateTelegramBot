@@ -38,11 +38,11 @@ async def cmd_start(message: Message) -> None:
     # parse_mode="Markdown" lets us use *bold*, _italic_, and `code` formatting.
     # (We set a global default in bot.py, but being explicit here is fine too.)
     await message.answer(
-        f"👋 Hey {name}! I'm *RateBot*.\n\n"
+        f"👋 Hey {name}! I'm RateBot.\n\n"
         "I fetch live currency exchange rates so you always know what your money is worth.\n\n"
-        "*Commands*\n"
+        "Commands\n"
         "• /rates — rates from USD\n"
-        "• /rates EUR — rates from any base currency\n\n"
-        "Try /rates to get started! 💱",
-        parse_mode="Markdown",
+        "• /rates EUR — rates from any base currency (in this case EUR)\n\n\n"
+        "  Supported base currencies: USD EUR GBP JPY CAD AUD CHF CNY INR BRL MXN ZAR SEK NOK DKK SGD NGN\n\n"
+        "Try /rates to get started!",
     )
