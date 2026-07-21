@@ -22,7 +22,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from dotenv import load_dotenv
 
-from handlers import rates, start
+from handlers import rates, start, subscribe
+from services.scheduler import setup_scheduler
 
 # load_dotenv() reads the .env file and adds its variables to os.environ.
 # This must be called before any os.getenv() calls.
@@ -60,6 +61,12 @@ async def main() -> None:
     # update — the first one wins. start → rates is a logical reading order.
     dp.include_router(start.router)
     dp.include_router(rates.router)
+    dp.include_router(subscribe.router)
+
+    # Start the background scheduler for the daily rates broadcast. It runs on the
+    # same event loop as the bot, so it must be created after the bot exists but
+    # before we begin polling. We keep a reference so it isn't garbage-collected.
+    scheduler = setup_scheduler(bot)
 
     logger.info("RateBot is starting…")
 

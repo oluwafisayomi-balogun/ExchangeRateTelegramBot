@@ -42,7 +42,9 @@ async def cmd_start(message: Message) -> None:
         "I fetch live currency exchange rates so you always know what your money is worth.\n\n"
         "Commands\n"
         "• /rates — rates from USD\n"
-        "• /rates EUR — rates from any base currency (in this case EUR)\n\n\n"
+        "• /rates EUR — rates from any base currency (in this case EUR)\n"
+        "• /subscribe — get USD rates every day at 8:00 AM (WAT)\n"
+        "• /unsubscribe — stop the daily rates\n\n\n"
         "  Supported base currencies: USD EUR GBP JPY CAD AUD CHF CNY INR BRL MXN ZAR SEK NOK DKK SGD NGN\n\n"
         "Try /rates to get started!",
     )
