@@ -4,7 +4,7 @@
 
 A Telegram bot that fetches live currency exchange rates on demand.
 
-Built with **aiogram 3.x** and the free [Frankfurter API](https://www.frankfurter.app) — no API key needed.
+Built with **aiogram 3.x** and the free [open.er-api.com](https://www.exchangerate-api.com) — no API key needed.
 
 ---
 
@@ -15,7 +15,11 @@ Built with **aiogram 3.x** and the free [Frankfurter API](https://www.frankfurte
 | `/start` | Welcome message with usage instructions |
 | `/rates` | Live rates with USD as the base |
 | `/rates EUR` | Rates from any supported base currency |
-| Inline buttons | Tap USD / EUR / GBP / JPY / CAD / AUD to switch base instantly |
+| Inline buttons | Tap USD / EUR / GBP / JPY / CAD / AUD to switch base |
+
+Output always shows 5 major currencies + NGN regardless of the base.
+
+Supported base currencies: `USD` `EUR` `GBP` `JPY` `CAD` `AUD` `CHF` `CNY` `INR` `BRL` `MXN` `ZAR` `SEK` `NOK` `DKK` `SGD` `NGN`
 
 ---
 
@@ -28,8 +32,9 @@ ratebot/
 │   ├── start.py           # /start command
 │   └── rates.py           # /rates command + inline keyboard callbacks
 ├── services/
-│   └── exchange.py        # Async HTTP fetch from Frankfurter + message formatter
-├── .env.example           # Copy this to .env and add your bot token
+│   └── exchange.py        # Async HTTP fetch + message formatter
+├── Procfile               # Tells Railway to run: worker: python bot.py
+├── .env.example           # Copy to .env and add your bot token
 ├── requirements.txt
 └── README.md
 ```
@@ -70,8 +75,8 @@ handle other incoming messages while one user's rate request is in flight.
 When a user taps an inline keyboard button, Telegram sends a **CallbackQuery**
 (not a Message) to the bot. The `callback_data` field contains whatever string
 you set when building the button — in this bot, that's `"rates:EUR"` etc.
-The handler splits that string to get the currency code, then fetches and
-displays new rates by editing the original message in place.
+The handler splits that string to get the currency code, then sends a fresh
+message with the new rates (and removes the keyboard from the old one).
 
 ---
 
@@ -111,14 +116,22 @@ Open Telegram, find your bot, and send `/rates`.
 
 ---
 
-## Deploying (Railway)
+## Deploying to Railway
+
+Railway runs `python bot.py` on their servers 24/7 — your laptop can be off and the bot stays alive. Two files make this work automatically:
+
+- **`requirements.txt`** — Railway reads this to install dependencies
+- **`Procfile`** — tells Railway what command to run (`worker: python bot.py`)
+
+**Steps:**
 
 1. Push this repo to GitHub
 2. Go to [railway.app](https://railway.app) → New Project → Deploy from GitHub repo
-3. Add `BOT_TOKEN` as an environment variable under your project's Variables tab
-4. Railway auto-detects Python and runs `python bot.py`
+3. Select your repo
+4. Go to the **Variables** tab → add `BOT_TOKEN` with your token as the value
+5. Railway deploys automatically — your bot is live
 
-The bot will run 24/7. You can then share your live `@yourbotname` handle as a demo.
+When you push new changes to GitHub, Railway redeploys automatically.
 
 ---
 
@@ -127,6 +140,6 @@ The bot will run 24/7. You can then share your live `@yourbotname` handle as a d
 | Library | Why |
 |---|---|
 | [aiogram 3.x](https://docs.aiogram.dev/en/latest/) | Async Telegram bot framework — current standard |
-| [aiohttp](https://docs.aiohttp.org/) | Async HTTP client (used to call Frankfurter) |
+| [aiohttp](https://docs.aiohttp.org/) | Async HTTP client for fetching exchange rates |
 | [python-dotenv](https://pypi.org/project/python-dotenv/) | Loads `.env` into environment variables |
-| [Frankfurter API](https://www.frankfurter.app) | Free ECB-backed exchange rate data, no key needed |
+| [open.er-api.com](https://www.exchangerate-api.com) | Free exchange rate API — includes NGN, no key needed |
