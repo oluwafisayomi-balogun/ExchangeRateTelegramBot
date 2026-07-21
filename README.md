@@ -15,7 +15,7 @@ Built with **aiogram 3.x** and the free [open.er-api.com](https://www.exchangera
 | `/start` | Welcome message with usage instructions |
 | `/rates` | Live rates with USD as the base |
 | `/rates EUR` | Rates from any supported base currency (in this case EUR)|
-| `/subscribe` | Get USD rates automatically every day at 8:00 AM (WAT) |
+| `/subscribe` | Get USD rates automatically every day at 7:00 AM (UTC) |
 | `/unsubscribe` | Stop the daily broadcast |
 | Inline buttons | Tap USD / EUR / GBP / JPY / CAD / AUD to switch base |
 
@@ -54,16 +54,16 @@ The three-layer split (bot → handlers → services) is intentional:
 ## Daily broadcast
 
 Users who send `/subscribe` are added to a list and receive USD rates automatically
-every morning at **8:00 AM WAT** (West Africa Time).
+every morning at **7:00 AM UTC**.
 
 **How it works:**
 
 - A Telegram bot can only message a user who has interacted with it first, so
-  `/subscribe` saves the user's `chat_id` to `services/subscribers.json`.
+  `/subscribe` saves the user's `chat_id` (see the storage section below).
 - [APScheduler](https://apscheduler.readthedocs.io/) runs *inside* the bot process
   (not as a separate Railway Cron job). Since the bot is already running 24/7 for
   polling, the scheduler shares that same process, bot instance, and subscriber list.
-- At 8:00 AM WAT the scheduled job fetches rates **once** and sends them to every
+- At 7:00 AM UTC the scheduled job fetches rates **once** and sends them to every
   subscriber. One bad `chat_id` (e.g. a user who blocked the bot) is logged and
   skipped so it can't break the whole broadcast.
 
@@ -71,8 +71,27 @@ every morning at **8:00 AM WAT** (West Africa Time).
 That would mean two processes sharing one bot token and no shared subscriber list.
 An in-process scheduler is the standard pattern for an always-on bot.
 
-> ⚠️ **Persistence note:** Railway's filesystem is *ephemeral* — `subscribers.json`
-> is wiped on every redeploy, so subscribers must re-subscribe after each deploy.
-> For durable storage, attach a Railway Volume or use a database.
+### Where subscribers are stored
+
+`services/subscribers.py` picks its storage backend automatically:
+
+| Environment | Backend | Why |
+|---|---|---|
+| Railway (production) | **PostgreSQL** | Set a `DATABASE_URL` env var and the bot uses Postgres — data survives redeploys, restarts, and crashes. |
+| Local (development) | **JSON file** | No `DATABASE_URL`, so it falls back to `subscribers.json` — zero setup, easy to inspect. |
+
+The same three functions (`add` / `remove` / `all_subscribers`) serve both backends,
+so the rest of the app never knows which one is active. That's the point of putting
+storage behind its own module.
+
+**Setting up Postgres on Railway:**
+
+1. In your Railway project → **New** → **Database** → **Add PostgreSQL**
+2. Railway automatically injects a `DATABASE_URL` variable into your bot service
+3. Redeploy — on startup the bot connects and creates the `subscribers` table
+
+> Without a `DATABASE_URL`, Railway would fall back to the JSON file, which its
+> *ephemeral* filesystem wipes on every redeploy. Postgres is what makes
+> subscriptions durable in production.
 
 ---

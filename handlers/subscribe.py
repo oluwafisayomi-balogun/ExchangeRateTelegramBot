@@ -24,10 +24,10 @@ async def cmd_subscribe(message: Message) -> None:
     message.chat.id is the ID we need to message them later. For a private chat
     with the bot, this is the same as the user's own ID.
     """
-    added = subscribers.add(message.chat.id)
+    added = await subscribers.add(message.chat.id)
     if added:
         await message.answer(
-            "✅ Subscribed! You'll get USD rates every day at 8:00 AM (WAT).\n\n"
+            "✅ Subscribed! You'll get USD rates every day at 7:00 AM (UTC).\n\n"
             "Send /unsubscribe any time to stop."
         )
     else:
@@ -37,7 +37,7 @@ async def cmd_subscribe(message: Message) -> None:
 @router.message(Command("unsubscribe"))
 async def cmd_unsubscribe(message: Message) -> None:
     """Remove the user's chat from the daily broadcast list."""
-    removed = subscribers.remove(message.chat.id)
+    removed = await subscribers.remove(message.chat.id)
     if removed:
         await message.answer("🛑 Unsubscribed. You won't get the daily broadcast anymore.")
     else:

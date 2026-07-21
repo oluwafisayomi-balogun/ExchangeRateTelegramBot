@@ -24,6 +24,7 @@ from dotenv import load_dotenv
 
 from handlers import rates, start, subscribe
 from services.scheduler import setup_scheduler
+from services.subscribers import init_storage
 
 # load_dotenv() reads the .env file and adds its variables to os.environ.
 # This must be called before any os.getenv() calls.
@@ -62,6 +63,11 @@ async def main() -> None:
     dp.include_router(start.router)
     dp.include_router(rates.router)
     dp.include_router(subscribe.router)
+
+    # Prepare the subscriber storage. If DATABASE_URL is set (Railway), this opens
+    # a Postgres connection pool and creates the table; otherwise it's a no-op and
+    # the JSON file is used. Must run before polling so subscriptions can be saved.
+    await init_storage()
 
     # Start the background scheduler for the daily rates broadcast. It runs on the
     # same event loop as the bot, so it must be created after the bot exists but

@@ -8,8 +8,8 @@ This is simpler than Railway Cron because the bot is already running 24/7 for
 polling — the scheduler just shares that same running process and bot instance,
 so it can reuse the subscriber list and the same Telegram connection.
 
-Timezone: WAT (West Africa Time, UTC+1). We use ZoneInfo("Africa/Lagos") so the
-schedule is anchored to WAT regardless of what timezone Railway's server runs in.
+Timezone: UTC. We use ZoneInfo("UTC") so the schedule is anchored to UTC
+regardless of what timezone Railway's server happens to run in.
 """
 
 from __future__ import annotations
@@ -26,9 +26,9 @@ from services.exchange import fetch_rates, format_rates_message
 
 logger = logging.getLogger(__name__)
 
-# WAT has no daylight saving, but using a named zone is still the correct habit —
-# it makes the intent explicit and works the same everywhere.
-WAT = ZoneInfo("Africa/Lagos")
+# Anchoring to a named zone makes the schedule's intent explicit and keeps it
+# stable no matter which timezone the host server is configured with.
+UTC = ZoneInfo("UTC")
 
 
 async def broadcast_rates(bot: Bot) -> None:
@@ -38,7 +38,7 @@ async def broadcast_rates(bot: Bot) -> None:
     We fetch a single time (not per-user) to avoid hammering the API. If the fetch
     fails, we log it and skip this run rather than sending a broken message to everyone.
     """
-    chat_ids = subscribers.all_subscribers()
+    chat_ids = await subscribers.all_subscribers()
     if not chat_ids:
         logger.info("Broadcast tick: no subscribers, nothing to send.")
         return
@@ -65,30 +65,21 @@ async def broadcast_rates(bot: Bot) -> None:
 
 def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     """
-    Create the scheduler and register the broadcast jobs.
+    Create the scheduler and register the broadcast job.
 
-    CronTrigger works like a Unix cron entry. hour=8, minute=0 → 08:00 WAT daily.
+    CronTrigger works like a Unix cron entry. hour=7, minute=0 → 07:00 UTC daily.
     We pass `bot` to the job via `args` so broadcast_rates has something to send with.
     """
-    scheduler = AsyncIOScheduler(timezone=WAT)
+    scheduler = AsyncIOScheduler(timezone=UTC)
 
-    # 8:00 AM WAT — the real daily broadcast.
+    # 7:00 AM UTC — the daily broadcast.
     scheduler.add_job(
         broadcast_rates,
-        CronTrigger(hour=8, minute=0, timezone=WAT),
+        CronTrigger(hour=7, minute=0, timezone=UTC),
         args=[bot],
-        name="daily_rates_8am",
-    )
-
-    # 9:35 PM WAT — a temporary test slot so you can confirm it works today.
-    # Remove this second job once you've verified the broadcast works.
-    scheduler.add_job(
-        broadcast_rates,
-        CronTrigger(hour=21, minute=35, timezone=WAT),
-        args=[bot],
-        name="test_rates_935pm",
+        name="daily_rates_7am_utc",
     )
 
     scheduler.start()
-    logger.info("Scheduler started — broadcasts at 08:00 and 21:35 WAT.")
+    logger.info("Scheduler started — broadcast at 07:00 UTC.")
     return scheduler
