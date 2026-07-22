@@ -4,7 +4,7 @@ bot.py
 The entry point for RateBot. Run this file to start the bot:
     python bot.py
 
-What happens here:
+What happens here-:
   1. Load the bot token from the .env file
   2. Create a Bot instance (the Telegram API client)
   3. Create a Dispatcher (routes incoming updates to the right handler)
