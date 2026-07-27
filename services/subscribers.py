@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import datetime, timezone
 from pathlib import Path
 
 # Holds the asyncpg connection pool once init_storage() sets it up.
@@ -58,48 +59,86 @@ async def init_storage() -> None:
         await conn.execute(
             "CREATE TABLE IF NOT EXISTS subscribers (chat_id BIGINT PRIMARY KEY)"
         )
+        # ADD COLUMN IF NOT EXISTS migrates an already-deployed table in place
+        # instead of requiring a drop/recreate (which would lose subscribers).
+        await conn.execute("ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS username TEXT")
+        await conn.execute("ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS first_name TEXT")
+        await conn.execute("ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS last_name TEXT")
+        await conn.execute(
+            "ALTER TABLE subscribers ADD COLUMN IF NOT EXISTS subscribed_at "
+            "TIMESTAMPTZ NOT NULL DEFAULT now()"
+        )
 
 
 # ---------------------------------------------------------------------------
 # JSON-file helpers (used only when there's no database configured)
 # ---------------------------------------------------------------------------
-def _json_load() -> set[int]:
+def _json_load() -> dict[int, dict]:
+    """
+    Returns {chat_id: {username, first_name, last_name, subscribed_at}}.
+
+    Older versions of this file stored a plain list of chat_ids — if we find
+    that shape, treat each id as a subscriber with no extra info yet.
+    """
     if not _FILE.exists():
-        return set()
+        return {}
     try:
-        return set(json.loads(_FILE.read_text()))
+        raw = json.loads(_FILE.read_text())
     except (json.JSONDecodeError, ValueError):
-        return set()
+        return {}
+
+    if isinstance(raw, list):  # legacy format
+        return {chat_id: {} for chat_id in raw}
+    return {int(chat_id): info for chat_id, info in raw.items()}
 
 
-def _json_save(chat_ids: set[int]) -> None:
-    _FILE.write_text(json.dumps(sorted(chat_ids)))
+def _json_save(subscribers_by_id: dict[int, dict]) -> None:
+    _FILE.write_text(json.dumps({str(k): v for k, v in subscribers_by_id.items()}))
 
 
 # ---------------------------------------------------------------------------
 # Public API — async so the same functions can hit either the DB or the file
 # ---------------------------------------------------------------------------
-async def add(chat_id: int) -> bool:
+async def add(
+    chat_id: int,
+    username: str | None = None,
+    first_name: str | None = None,
+    last_name: str | None = None,
+) -> bool:
     """
     Subscribe a chat. Returns True if newly added, False if already subscribed.
     The boolean lets the handler show the right message.
+
+    username/first_name/last_name come from Telegram's User object and are
+    stored alongside the chat_id purely for admin visibility (e.g. browsing
+    the table) — the broadcast itself only needs chat_id.
     """
     if _pool:
         async with _pool.acquire() as conn:
-            # ON CONFLICT DO NOTHING skips the insert if the chat_id already exists.
-            # The command tag is "INSERT 0 1" when a row was added, "INSERT 0 0" if not.
-            result = await conn.execute(
-                "INSERT INTO subscribers (chat_id) VALUES ($1) ON CONFLICT DO NOTHING",
-                chat_id,
+            # DO UPDATE keeps name/username fresh even for chats that never
+            # unsubscribe. xmax = 0 distinguishes a true insert from a row that
+            # already existed and only got its info refreshed via the conflict path.
+            row = await conn.fetchrow(
+                "INSERT INTO subscribers (chat_id, username, first_name, last_name) "
+                "VALUES ($1, $2, $3, $4) "
+                "ON CONFLICT (chat_id) DO UPDATE "
+                "SET username = $2, first_name = $3, last_name = $4 "
+                "RETURNING (xmax = 0) AS inserted",
+                chat_id, username, first_name, last_name,
             )
-            return result.endswith("1")
+            return row["inserted"]
 
-    chat_ids = _json_load()
-    if chat_id in chat_ids:
-        return False
-    chat_ids.add(chat_id)
-    _json_save(chat_ids)
-    return True
+    subs = _json_load()
+    is_new = chat_id not in subs
+    existing = subs.get(chat_id, {})
+    subs[chat_id] = {
+        "username": username,
+        "first_name": first_name,
+        "last_name": last_name,
+        "subscribed_at": existing.get("subscribed_at", datetime.now(timezone.utc).isoformat()),
+    }
+    _json_save(subs)
+    return is_new
 
 
 async def remove(chat_id: int) -> bool:
@@ -112,11 +151,11 @@ async def remove(chat_id: int) -> bool:
             )
             return result.endswith("1")
 
-    chat_ids = _json_load()
-    if chat_id not in chat_ids:
+    subs = _json_load()
+    if chat_id not in subs:
         return False
-    chat_ids.discard(chat_id)
-    _json_save(chat_ids)
+    del subs[chat_id]
+    _json_save(subs)
     return True
 
 
@@ -127,4 +166,4 @@ async def all_subscribers() -> set[int]:
             rows = await conn.fetch("SELECT chat_id FROM subscribers")
             return {row["chat_id"] for row in rows}
 
-    return _json_load()
+    return set(_json_load().keys())

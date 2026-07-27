@@ -24,7 +24,13 @@ async def cmd_subscribe(message: Message) -> None:
     message.chat.id is the ID we need to message them later. For a private chat
     with the bot, this is the same as the user's own ID.
     """
-    added = await subscribers.add(message.chat.id)
+    user = message.from_user
+    added = await subscribers.add(
+        message.chat.id,
+        username=user.username if user else None,
+        first_name=user.first_name if user else None,
+        last_name=user.last_name if user else None,
+    )
     if added:
         await message.answer(
             "✅ Subscribed! You'll get USD rates every day at 7:00 AM (UTC).\n\n"
