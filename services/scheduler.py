@@ -4,12 +4,12 @@ services/scheduler.py
 Sets up the scheduled daily rates broadcast.
 
 We use APScheduler (Advanced Python Scheduler) running *inside* the bot process.
-This is simpler than Railway Cron because the bot is already running 24/7 for
+This is simpler than a separate cron job because the bot is already running 24/7 for
 polling — the scheduler just shares that same running process and bot instance,
 so it can reuse the subscriber list and the same Telegram connection.
 
 Timezone: UTC. We use ZoneInfo("UTC") so the schedule is anchored to UTC
-regardless of what timezone Railway's server happens to run in.
+regardless of what timezone the host server happens to run in.
 """
 
 from __future__ import annotations

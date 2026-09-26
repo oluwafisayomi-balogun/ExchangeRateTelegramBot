@@ -7,10 +7,10 @@ A Telegram bot can only message a user who has previously interacted with it,
 and only if we've saved their chat_id. This module keeps that list persistent.
 
 Two storage backends, chosen automatically:
-  - Postgres  — used when a DATABASE_URL env var exists (i.e. on Railway).
+  - Postgres  — used when a DATABASE_URL env var exists (Neon on Fly).
                 Survives redeploys, restarts, and crashes.
   - JSON file — used locally when there's no DATABASE_URL. Zero setup, easy to
-                inspect while learning. (Not durable on Railway — the container
+                inspect while learning. (Not durable on Fly — the container
                 filesystem is wiped on every deploy, which is why we use a DB there.)
 
 Because every function goes through the same three names (add / remove /

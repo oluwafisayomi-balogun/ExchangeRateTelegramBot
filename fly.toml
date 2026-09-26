@@ -1,0 +1,11 @@
+app = "ratebot"
+primary_region = "lhr"
+
+[build]
+
+[processes]
+  app = "python bot.py"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

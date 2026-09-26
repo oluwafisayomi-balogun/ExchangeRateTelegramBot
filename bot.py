@@ -64,7 +64,7 @@ async def main() -> None:
     dp.include_router(rates.router)
     dp.include_router(subscribe.router)
 
-    # Prepare the subscriber storage. If DATABASE_URL is set (Railway), this opens
+    # Prepare the subscriber storage. If DATABASE_URL is set (Neon on Fly), this opens
     # a Postgres connection pool and creates the table; otherwise it's a no-op and
     # the JSON file is used. Must run before polling so subscriptions can be saved.
     await init_storage()

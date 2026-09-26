@@ -38,7 +38,8 @@ ratebot/
 │   ├── exchange.py        # Async HTTP fetch + message formatter
 │   ├── subscribers.py     # Saves/loads subscriber info (Postgres or JSON file)
 │   └── scheduler.py       # APScheduler daily broadcast job
-├── Procfile               # Tells Railway to run: worker: python bot.py
+├── Dockerfile             # Container image Fly builds: runs python bot.py
+├── fly.toml               # Fly.io app config (1 always-on machine, London)
 ├── .env                  
 ├── requirements.txt
 └── README.md
@@ -54,3 +55,15 @@ Three-layer split:
 ## Daily broadcast
 
 Users who send `/subscribe` are added to a list and receive USD rates automatically every morning at **7:00 AM UTC**.
+
+---
+
+## Deployment
+
+Runs on [Fly.io](https://fly.io) as a single always-on machine, with subscribers stored in a free [Neon](https://neon.tech) Postgres database.
+
+```bash
+fly secrets set BOT_TOKEN=... DATABASE_URL=...   # one-time
+fly deploy --ha=false                             # deploy (keep exactly 1 machine)
+fly logs -a ratebot                               # view logs
+```
