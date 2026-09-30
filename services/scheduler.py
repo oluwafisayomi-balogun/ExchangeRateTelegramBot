@@ -73,11 +73,15 @@ def setup_scheduler(bot: Bot) -> AsyncIOScheduler:
     scheduler = AsyncIOScheduler(timezone=UTC)
 
     # 7:00 AM UTC — the daily broadcast.
+    # misfire_grace_time: APScheduler's default is 1 second, so any tiny delay
+    # (host jitter, a busy event loop) causes the job to be skipped entirely
+    # instead of run late. Give it a generous window so a late start still fires.
     scheduler.add_job(
         broadcast_rates,
         CronTrigger(hour=7, minute=0, timezone=UTC),
         args=[bot],
         name="daily_rates_7am_utc",
+        misfire_grace_time=3600,
     )
 
     scheduler.start()
