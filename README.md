@@ -1,4 +1,6 @@
-# RateBot 
+# Exchange Rate Telegram Bot
+
+*RateBot (@RateFetchBot): live exchange rates in Telegram, with a daily 7:00 UTC broadcast.*
 
 > **Live demo → [@RateFetchBot](https://t.me/RateFetchBot)**
 
@@ -40,7 +42,7 @@ ratebot/
 │   └── scheduler.py       # APScheduler daily broadcast job
 ├── Dockerfile             # Container image Fly builds: runs python bot.py
 ├── fly.toml               # Fly.io app config (1 always-on machine, London)
-├── .env                  
+├── .env.example           # Copy to .env: BOT_TOKEN, optional DATABASE_URL
 ├── requirements.txt
 └── README.md
 ```

@@ -5,3 +5,8 @@ __pycache__/
 .venv/
 venv/
 services/subscribers.json
+
+# Local-only notes
+internal/
+CLAUDE.md
+.claude/settings.local.json
